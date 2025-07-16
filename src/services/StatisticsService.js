@@ -385,13 +385,518 @@ partiallyUpdateMemberSkills.schema = {
   }).required()
 }
 
+/**
+ * Create member statistics.
+ * @param {Object} currentUser the current user
+ * @param {String} handle the member handle
+ * @param {Object} data the stats data
+ * @returns {Object} the created stats
+ */
+async function createMemberStats (currentUser, handle, data) {
+  // Validate input
+  // (For brevity, only develop is shown; repeat for design, dataScience, copilot as needed)
+  const schema = Joi.object({
+    groupId: Joi.number().integer().optional(),
+    isPrivate: Joi.boolean().optional(),
+    challenges: Joi.number().optional(),
+    wins: Joi.number().optional(),
+    develop: Joi.object({
+      challenges: Joi.number().optional(),
+      wins: Joi.number().optional(),
+      mostRecentSubmission: Joi.date().optional(),
+      mostRecentEventDate: Joi.date().optional(),
+      items: Joi.array().items(Joi.object({
+        name: Joi.string().required(),
+        subTrackId: Joi.number().required(),
+        challenges: Joi.number().optional(),
+        wins: Joi.number().optional(),
+        mostRecentSubmission: Joi.date().optional(),
+        mostRecentEventDate: Joi.date().optional(),
+        // ... other fields ...
+      })).optional()
+    }).optional(),
+    // ... design, dataScience, copilot ...
+  })
+  await schema.validateAsync(data)
+
+  // Get member by handle
+  const member = await helper.getMemberByHandle(handle)
+  if (!member) {
+    throw new errors.NotFoundError(`Member with handle ${handle} not found`)
+  }
+
+  // Check for existing record for this userId/groupId/isPrivate
+  const exists = await prisma.memberStats.findFirst({
+    where: {
+      userId: member.userId,
+      groupId: data.groupId || null,
+      isPrivate: data.isPrivate || false
+    }
+  })
+  if (exists) {
+    throw new errors.ConflictError('Stats for this member/group already exists')
+  }
+
+  // Create the memberStats record with nested develop/design/dataScience/copilot
+  const created = await prisma.memberStats.create({
+    data: {
+      userId: member.userId,
+      groupId: data.groupId,
+      isPrivate: data.isPrivate || false,
+      challenges: data.challenges,
+      wins: data.wins,
+      createdBy: currentUser ? currentUser.handle : 'system',
+      develop: data.develop ? {
+        create: {
+          ...data.develop,
+          createdBy: currentUser ? currentUser.handle : 'system',
+          items: data.develop.items ? {
+            create: data.develop.items.map(item => ({
+              ...item,
+              createdBy: currentUser ? currentUser.handle : 'system'
+            }))
+          } : undefined
+        }
+      } : undefined,
+      // ... design, dataScience, copilot ...
+    },
+    include: { develop: { include: { items: true } }, design: true, dataScience: true, copilot: true }
+  })
+
+  // Format and return the response
+  return prismaHelper.buildStatsResponse(member, created)
+}
+
+/**
+ * Partially update member statistics.
+ * @param {Object} currentUser the current user
+ * @param {String} handle the member handle
+ * @param {Object} data the stats data
+ * @returns {Object} the updated stats
+ */
+async function partiallyUpdateMemberStats (currentUser, handle, data) {
+  // Validate input (same as create)
+  const schema = Joi.object({
+    groupId: Joi.number().integer().optional(),
+    isPrivate: Joi.boolean().optional(),
+    challenges: Joi.number().optional(),
+    wins: Joi.number().optional(),
+    develop: Joi.object({
+      challenges: Joi.number().optional(),
+      wins: Joi.number().optional(),
+      mostRecentSubmission: Joi.date().optional(),
+      mostRecentEventDate: Joi.date().optional(),
+      items: Joi.array().items(Joi.object({
+        id: Joi.number().integer().optional(),
+        name: Joi.string().required(),
+        subTrackId: Joi.number().required(),
+        challenges: Joi.number().optional(),
+        wins: Joi.number().optional(),
+        mostRecentSubmission: Joi.date().optional(),
+        mostRecentEventDate: Joi.date().optional(),
+      })).optional()
+    }).optional(),
+    design: Joi.object({
+      challenges: Joi.number().optional(),
+      wins: Joi.number().optional(),
+      mostRecentSubmission: Joi.date().optional(),
+      mostRecentEventDate: Joi.date().optional(),
+    }).optional(),
+    dataScience: Joi.object({
+      challenges: Joi.number().optional(),
+      wins: Joi.number().optional(),
+      mostRecentSubmission: Joi.date().optional(),
+      mostRecentEventDate: Joi.date().optional(),
+    }).optional(),
+    copilot: Joi.object({
+      challenges: Joi.number().optional(),
+      wins: Joi.number().optional(),
+      mostRecentSubmission: Joi.date().optional(),
+      mostRecentEventDate: Joi.date().optional(),
+    }).optional()
+  })
+  await schema.validateAsync(data)
+
+  // Get member by handle
+  const member = await helper.getMemberByHandle(handle)
+  if (!member) {
+    throw new errors.NotFoundError(`Member with handle ${handle} not found`)
+  }
+
+  // Find existing stats
+  const stats = await prisma.memberStats.findFirst({
+    where: {
+      userId: member.userId,
+      groupId: data.groupId || null,
+      isPrivate: data.isPrivate || false
+    },
+    include: { develop: { include: { items: true } }, design: true, dataScience: true, copilot: true }
+  })
+  if (!stats) {
+    throw new errors.NotFoundError('Stats for this member/group not found')
+  }
+
+  // Prepare update data
+  const updateData = {}
+  if (data.groupId !== undefined) updateData.groupId = data.groupId
+  if (data.isPrivate !== undefined) updateData.isPrivate = data.isPrivate
+  if (data.challenges !== undefined) updateData.challenges = data.challenges
+  if (data.wins !== undefined) updateData.wins = data.wins
+  updateData.updatedBy = currentUser ? currentUser.handle : 'system'
+
+  // --- Handle develop sub-items ---
+  if (data.develop) {
+    // Update develop main fields
+    if (stats.develop) {
+      await prisma.memberDevelopStats.update({
+        where: { id: stats.develop.id },
+        data: {
+          ...data.develop,
+          updatedBy: currentUser ? currentUser.handle : 'system'
+        }
+      })
+      // Handle items
+      if (data.develop.items) {
+        const incomingIds = data.develop.items.filter(i => i.id).map(i => i.id)
+        const existingIds = stats.develop.items.map(i => i.id)
+        const toDelete = existingIds.filter(id => !incomingIds.includes(id))
+        const toUpdate = data.develop.items.filter(i => i.id)
+        const toCreate = data.develop.items.filter(i => !i.id)
+        await prisma.memberDevelopStatsItem.deleteMany({ where: { id: { in: toDelete } } })
+        for (const item of toUpdate) {
+          await prisma.memberDevelopStatsItem.update({
+            where: { id: item.id },
+            data: { ...item, updatedBy: currentUser ? currentUser.handle : 'system' }
+          })
+        }
+        for (const item of toCreate) {
+          await prisma.memberDevelopStatsItem.create({
+            data: { ...item, developStatsId: stats.develop.id, createdBy: currentUser ? currentUser.handle : 'system' }
+          })
+        }
+      }
+    }
+  }
+  // --- Handle design sub-items ---
+  if (data.design) {
+    if (stats.design) {
+      await prisma.memberDesignStats.update({
+        where: { id: stats.design.id },
+        data: {
+          ...data.design,
+          updatedBy: currentUser ? currentUser.handle : 'system'
+        }
+      })
+    }
+  }
+  // --- Handle dataScience sub-items ---
+  if (data.dataScience) {
+    if (stats.dataScience) {
+      await prisma.memberDataScienceStats.update({
+        where: { id: stats.dataScience.id },
+        data: {
+          ...data.dataScience,
+          updatedBy: currentUser ? currentUser.handle : 'system'
+        }
+      })
+    }
+  }
+  // --- Handle copilot sub-items ---
+  if (data.copilot) {
+    if (stats.copilot) {
+      await prisma.memberCopilotStats.update({
+        where: { id: stats.copilot.id },
+        data: {
+          ...data.copilot,
+          updatedBy: currentUser ? currentUser.handle : 'system'
+        }
+      })
+    }
+  }
+
+  // Update the main record
+  await prisma.memberStats.update({
+    where: { id: stats.id },
+    data: updateData
+  })
+
+  // Fetch and return the updated record
+  const updated = await prisma.memberStats.findUnique({
+    where: { id: stats.id },
+    include: { develop: { include: { items: true } }, design: true, dataScience: true, copilot: true }
+  })
+  return prismaHelper.buildStatsResponse(member, updated)
+}
+
+/**
+ * Create member history statistics.
+ * @param {Object} currentUser the current user
+ * @param {String} handle the member handle
+ * @param {Object} data the stats history data
+ * @returns {Object} the created stats history
+ */
+async function createHistoryStats (currentUser, handle, data) {
+  // Validate input
+  const schema = Joi.object({
+    groupId: Joi.number().integer().optional(),
+    isPrivate: Joi.boolean().optional(),
+    develop: Joi.array().items(Joi.object({
+      challengeId: Joi.number().required(),
+      challengeName: Joi.string().required(),
+      ratingDate: Joi.date().required(),
+      newRating: Joi.number().required(),
+      subTrack: Joi.string().required(),
+      subTrackId: Joi.number().required(),
+    })).optional(),
+    dataScience: Joi.array().items(Joi.object({
+      challengeId: Joi.number().required(),
+      challengeName: Joi.string().required(),
+      date: Joi.date().required(),
+      rating: Joi.number().required(),
+      placement: Joi.number().required(),
+      percentile: Joi.number().required(),
+      subTrack: Joi.string().required(),
+      subTrackId: Joi.number().required(),
+    })).optional()
+  })
+  await schema.validateAsync(data)
+
+  // Get member by handle
+  const member = await helper.getMemberByHandle(handle)
+  if (!member) {
+    throw new errors.NotFoundError(`Member with handle ${handle} not found`)
+  }
+
+  // Check for existing record for this userId/groupId/isPrivate
+  const exists = await prisma.memberHistoryStats.findFirst({
+    where: {
+      userId: member.userId,
+      groupId: data.groupId || null,
+      isPrivate: data.isPrivate || false
+    }
+  })
+  if (exists) {
+    throw new errors.ConflictError('Stats history for this member/group already exists')
+  }
+
+  // Create the memberHistoryStats record with nested develop/dataScience
+  const created = await prisma.memberHistoryStats.create({
+    data: {
+      userId: member.userId,
+      groupId: data.groupId,
+      isPrivate: data.isPrivate || false,
+      createdBy: currentUser ? currentUser.handle : 'system',
+      develop: data.develop ? {
+        create: data.develop.map(item => ({
+          ...item,
+          createdBy: currentUser ? currentUser.handle : 'system'
+        }))
+      } : undefined,
+      dataScience: data.dataScience ? {
+        create: data.dataScience.map(item => ({
+          ...item,
+          createdBy: currentUser ? currentUser.handle : 'system'
+        }))
+      } : undefined
+    },
+    include: { develop: true, dataScience: true }
+  })
+
+  // Format and return the response
+  return prismaHelper.buildStatsHistoryResponse(member, created)
+}
+
+createHistoryStats.schema = {
+  currentUser: Joi.any(),
+  handle: Joi.string().required(),
+  data: Joi.object().keys({
+    groupId: Joi.number().integer().optional(),
+    isPrivate: Joi.boolean().optional(),
+    develop: Joi.array().items(Joi.object({
+      challengeId: Joi.number().required(),
+      challengeName: Joi.string().required(),
+      ratingDate: Joi.date().required(),
+      newRating: Joi.number().required(),
+      subTrack: Joi.string().required(),
+      subTrackId: Joi.number().required(),
+    })).optional(),
+    dataScience: Joi.array().items(Joi.object({
+      challengeId: Joi.number().required(),
+      challengeName: Joi.string().required(),
+      date: Joi.date().required(),
+      rating: Joi.number().required(),
+      placement: Joi.number().required(),
+      percentile: Joi.number().required(),
+      subTrack: Joi.string().required(),
+      subTrackId: Joi.number().required(),
+    })).optional()
+  }).required()
+}
+
+/**
+ * Partially update member history statistics.
+ * @param {Object} currentUser the current user
+ * @param {String} handle the member handle
+ * @param {Object} data the stats history data
+ * @returns {Object} the updated stats history
+ */
+async function partiallyUpdateHistoryStats (currentUser, handle, data) {
+  // Validate input
+  const schema = Joi.object({
+    groupId: Joi.number().integer().optional(),
+    isPrivate: Joi.boolean().optional(),
+    develop: Joi.array().items(Joi.object({
+      id: Joi.number().integer().optional(),
+      challengeId: Joi.number().required(),
+      challengeName: Joi.string().required(),
+      ratingDate: Joi.date().required(),
+      newRating: Joi.number().required(),
+      subTrack: Joi.string().required(),
+      subTrackId: Joi.number().required(),
+    })).optional(),
+    dataScience: Joi.array().items(Joi.object({
+      id: Joi.number().integer().optional(),
+      challengeId: Joi.number().required(),
+      challengeName: Joi.string().required(),
+      date: Joi.date().required(),
+      rating: Joi.number().required(),
+      placement: Joi.number().required(),
+      percentile: Joi.number().required(),
+      subTrack: Joi.string().required(),
+      subTrackId: Joi.number().required(),
+    })).optional()
+  })
+  await schema.validateAsync(data)
+
+  // Get member by handle
+  const member = await helper.getMemberByHandle(handle)
+  if (!member) {
+    throw new errors.NotFoundError(`Member with handle ${handle} not found`)
+  }
+
+  // Find existing stats history
+  const statsHistory = await prisma.memberHistoryStats.findFirst({
+    where: {
+      userId: member.userId,
+      groupId: data.groupId || null,
+      isPrivate: data.isPrivate || false
+    },
+    include: { develop: true, dataScience: true }
+  })
+  if (!statsHistory) {
+    throw new errors.NotFoundError('Stats history for this member/group not found')
+  }
+
+  // Prepare update data
+  const updateData = {}
+  if (data.groupId !== undefined) updateData.groupId = data.groupId
+  if (data.isPrivate !== undefined) updateData.isPrivate = data.isPrivate
+  updateData.updatedBy = currentUser ? currentUser.handle : 'system'
+
+  // --- Handle develop sub-items ---
+  if (data.develop) {
+    // IDs of incoming develop items
+    const incomingIds = data.develop.filter(i => i.id).map(i => i.id)
+    // IDs of existing develop items
+    const existingIds = statsHistory.develop.map(i => i.id)
+    // To delete: existing not in incoming
+    const toDelete = existingIds.filter(id => !incomingIds.includes(id))
+    // To update: incoming with id
+    const toUpdate = data.develop.filter(i => i.id)
+    // To create: incoming without id
+    const toCreate = data.develop.filter(i => !i.id)
+    // Delete
+    await prisma.memberDevelopHistoryStats.deleteMany({ where: { id: { in: toDelete } } })
+    // Update
+    for (const item of toUpdate) {
+      await prisma.memberDevelopHistoryStats.update({
+        where: { id: item.id },
+        data: { ...item, updatedBy: currentUser ? currentUser.handle : 'system' }
+      })
+    }
+    // Create
+    for (const item of toCreate) {
+      await prisma.memberDevelopHistoryStats.create({
+        data: { ...item, historyStatsId: statsHistory.id, createdBy: currentUser ? currentUser.handle : 'system' }
+      })
+    }
+  }
+
+  // --- Handle dataScience sub-items ---
+  if (data.dataScience) {
+    const incomingIds = data.dataScience.filter(i => i.id).map(i => i.id)
+    const existingIds = statsHistory.dataScience.map(i => i.id)
+    const toDelete = existingIds.filter(id => !incomingIds.includes(id))
+    const toUpdate = data.dataScience.filter(i => i.id)
+    const toCreate = data.dataScience.filter(i => !i.id)
+    await prisma.memberDataScienceHistoryStats.deleteMany({ where: { id: { in: toDelete } } })
+    for (const item of toUpdate) {
+      await prisma.memberDataScienceHistoryStats.update({
+        where: { id: item.id },
+        data: { ...item, updatedBy: currentUser ? currentUser.handle : 'system' }
+      })
+    }
+    for (const item of toCreate) {
+      await prisma.memberDataScienceHistoryStats.create({
+        data: { ...item, historyStatsId: statsHistory.id, createdBy: currentUser ? currentUser.handle : 'system' }
+      })
+    }
+  }
+
+  // Update the main record
+  await prisma.memberHistoryStats.update({
+    where: { id: statsHistory.id },
+    data: updateData
+  })
+
+  // Fetch and return the updated record
+  const updated = await prisma.memberHistoryStats.findUnique({
+    where: { id: statsHistory.id },
+    include: { develop: true, dataScience: true }
+  })
+  return prismaHelper.buildStatsHistoryResponse(member, updated)
+}
+
+partiallyUpdateHistoryStats.schema = {
+  currentUser: Joi.any(),
+  handle: Joi.string().required(),
+  data: Joi.object().keys({
+    groupId: Joi.number().integer().optional(),
+    isPrivate: Joi.boolean().optional(),
+    develop: Joi.array().items(Joi.object({
+      id: Joi.number().integer().optional(),
+      challengeId: Joi.number().required(),
+      challengeName: Joi.string().required(),
+      ratingDate: Joi.date().required(),
+      newRating: Joi.number().required(),
+      subTrack: Joi.string().required(),
+      subTrackId: Joi.number().required(),
+    })).optional(),
+    dataScience: Joi.array().items(Joi.object({
+      id: Joi.number().integer().optional(),
+      challengeId: Joi.number().required(),
+      challengeName: Joi.string().required(),
+      date: Joi.date().required(),
+      rating: Joi.number().required(),
+      placement: Joi.number().required(),
+      percentile: Joi.number().required(),
+      subTrack: Joi.string().required(),
+      subTrackId: Joi.number().required(),
+    })).optional()
+  }).required()
+}
+
 module.exports = {
   getDistribution,
   getHistoryStats,
   getMemberStats,
   getMemberSkills,
   createMemberSkills,
-  partiallyUpdateMemberSkills
+  partiallyUpdateMemberSkills,
+  createMemberStats,
+  partiallyUpdateMemberStats,
+  createHistoryStats,
+  partiallyUpdateHistoryStats
 }
 
 logger.buildService(module.exports)

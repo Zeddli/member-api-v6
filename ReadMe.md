@@ -180,3 +180,200 @@ npm run test
 
 ## Verification
 Refer to the verification document `Verification.md`
+
+## API Endpoints (Stats & Stats History)
+
+The following endpoints are available for managing member statistics and stats history:
+
+### Member Stats History
+- `GET    /members/:handle/stats/history` - Get member's stats history
+- `POST   /members/:handle/stats/history` - Create member's stats history
+- `PATCH  /members/:handle/stats/history` - Partially update member's stats history
+
+### Member Stats
+- `GET    /members/:handle/stats` - Get member's stats
+- `POST   /members/:handle/stats` - Create member's stats
+- `PATCH  /members/:handle/stats` - Partially update member's stats
+
+See the Postman collection in `docs/Member API.postman_collection.json` for example requests and responses.
+
+## Using the Postman Collection
+
+1. Open Postman and import the collection from `docs/Member API.postman_collection.json`.
+2. Set the base URL and any required environment variables (e.g., tokens for private endpoints).
+3. Use the provided requests to test all endpoints, including stats and stats history.
+
+## Example Environment Variables
+
+Create a `.env` file in the project root with the following (adjust as needed):
+
+```
+DATABASE_URL="postgresql://johndoe:mypassword@localhost:5432/memberdb"
+PORT=3000
+LOG_LEVEL=debug
+# Add other variables as needed
+```
+
+## Detailed Setup Instructions
+
+### 1. Clone the Repository
+```bash
+git clone <repo-url>
+cd member-api-v6
+```
+
+### 2. Install Dependencies
+```bash
+npm install
+```
+
+### 3. Set Up PostgreSQL Database
+You can use Docker or a native installation. For Docker:
+```bash
+docker run -d --name memberdb -p 5432:5432 \
+  -e POSTGRES_USER=johndoe -e POSTGRES_DB=memberdb \
+  -e POSTGRES_PASSWORD=mypassword \
+  postgres:16
+```
+
+### 4. Configure Environment Variables
+Create a `.env` file in the project root with the following content (adjust as needed):
+```
+DATABASE_URL="postgresql://johndoe:mypassword@localhost:5432/memberdb"
+PORT=3000
+LOG_LEVEL=debug
+# AUTH_SECRET, AUTH0_URL, AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET, etc. as needed
+```
+
+#### Common Environment Variables
+| Variable                | Description                                      | Example Value                                      |
+|-------------------------|--------------------------------------------------|----------------------------------------------------|
+| DATABASE_URL            | PostgreSQL connection string                     | postgresql://johndoe:mypassword@localhost:5432/memberdb |
+| PORT                    | Port for API server                              | 3000                                               |
+| LOG_LEVEL               | Log verbosity                                    | debug                                              |
+| AUTH_SECRET             | JWT secret for authentication                    | your_jwt_secret                                    |
+| AUTH0_URL               | Auth0 URL for M2M token                          | http://localhost:4000/v5/auth0                     |
+| AUTH0_CLIENT_ID         | Auth0 client ID                                  | xyz                                                |
+| AUTH0_CLIENT_SECRET     | Auth0 client secret                              | xyz                                                |
+| BUSAPI_URL              | Bus API URL                                      | http://localhost:4000/v5                           |
+| GROUPS_API_URL          | Groups API URL                                   | http://localhost:4000/v5/groups                    |
+| ...                     | ...                                              | ...                                                |
+
+> See `config/default.js` for a full list and descriptions of all supported variables.
+
+### 5. Initialize the Database
+```bash
+npm run init-db
+```
+
+### 6. Seed the Database with Test Data
+```bash
+npm run seed-data
+```
+
+### 7. Start the Application
+```bash
+npm start
+```
+The API will be available at `http://localhost:3000` (or your configured port).
+
+### 8. (Optional) Start the Local Mock Service
+If you want to mock external dependencies:
+```bash
+node mock/mock-api.js
+```
+This will start a mock server on port 4000.
+
+## Test Instructions
+
+### 1. Prerequisites
+- Ensure the database is running and seeded.
+- Ensure all environment variables are set (see above).
+- (Optional) Start the mock service if you want to mock external APIs.
+
+### 2. Run Tests
+```bash
+npm test
+```
+This will run all unit and integration tests. All tests should pass if setup is correct.
+
+### 3. Troubleshooting
+- **Database connection errors:**
+  - Ensure PostgreSQL is running and accessible at the `DATABASE_URL`.
+  - Check that the user, password, and database name are correct.
+- **Seeding errors:**
+  - Make sure the database is initialized (`npm run init-db`) before seeding.
+- **Port conflicts:**
+  - Change the `PORT` in your `.env` file if 3000 is in use.
+- **Missing environment variables:**
+  - Double-check your `.env` file and `config/default.js` for required variables.
+
+## API Testing with Postman
+- Import the collection from `docs/Member API.postman_collection.json`.
+- Use the provided requests to test all endpoints.
+- Set any required tokens or variables in your Postman environment.
+
+## Common Errors and Solutions
+
+### 1. Database Connection Errors
+- **Error:** `psql: error: connection to server on socket ... failed: No such file or directory`
+  - **Solution:** Ensure PostgreSQL is running. Start it with `sudo service postgresql start` (Linux/WSL) or use Docker as described above.
+
+- **Error:** `PrismaClientInitializationError: Environment variable not found: DATABASE_URL.`
+  - **Solution:** Set the `DATABASE_URL` environment variable in your `.env` file or export it in your shell.
+
+- **Error:** `FATAL: password authentication failed for user ...`
+  - **Solution:** Double-check your database username and password in `DATABASE_URL`. Ensure the user exists in your Postgres instance.
+
+### 2. Port Conflicts
+- **Error:** `EADDRINUSE: address already in use ...`
+  - **Solution:** Change the `PORT` in your `.env` file to a free port, or stop the process using the port.
+
+### 3. Missing Environment Variables
+- **Error:** `PrismaClientInitializationError: Environment variable not found: ...`
+  - **Solution:** Ensure all required variables are set in your `.env` file. See the environment variables section above and `config/default.js` for a full list.
+
+### 4. Database Migration/Seeding Errors
+- **Error:** `relation "..." does not exist` or migration errors
+  - **Solution:** Run `npm run init-db` to initialize the database schema before seeding or starting the app.
+
+- **Error:** Seeding script fails
+  - **Solution:** Ensure the database is initialized and accessible. Check for typos or missing data in your seed scripts.
+
+### 5. Authentication/Token Issues
+- **Error:** `401 Unauthorized` or `403 Forbidden` when calling endpoints
+  - **Solution:** Ensure you are providing a valid JWT token in your request headers. For private endpoints, use the correct token from your Auth0 or mock service.
+
+### 6. Test Failures
+- **Error:** Tests fail due to missing data or connection errors
+  - **Solution:** Ensure the database is seeded and all environment variables are set before running tests. Start the mock service if required.
+
+### 7. Docker Issues
+- **Error:** `Error response from daemon: ... port is already allocated`
+  - **Solution:** Stop any running containers using the port, or change the port mapping in your Docker command.
+
+### 8. Prisma Client Errors
+- **Error:** `Error: P1001: Can't reach database server at ...`
+  - **Solution:** Ensure your database server is running and accessible at the address in `DATABASE_URL`.
+
+If you encounter an error not listed here, check the logs for more details or consult the documentation for the relevant tool (Node.js, Prisma, PostgreSQL, Docker, etc.).
+
+## Seed Data for Testing and Validation
+
+The file `test_data.json` in the project root contains all required data for testing and validating your submission. This file includes sample members, statistics, stats history, skills, and related entities, structured to match the database schema.
+
+### How to Use
+1. Ensure your database is initialized (`npm run init-db`).
+2. Run the seeding script:
+   ```bash
+   npm run seed-data
+   ```
+   This will load the data from `test_data.json` into your local database using Prisma.
+
+### What It Contains
+- Member profiles and handles
+- Member statistics and stats history (including sub-items)
+- Skills, categories, and levels
+- All data needed to fully exercise and validate the API endpoints
+
+If you modify or add to the test data, rerun the seeding script to update your database.

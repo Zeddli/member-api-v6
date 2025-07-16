@@ -63,11 +63,55 @@ async function partiallyUpdateMemberSkills (req, res) {
   res.send(result)
 }
 
+/**
+ * Create member statistics
+ * @param {Object} req the request
+ * @param {Object} res the response
+ */
+async function createMemberStats (req, res) {
+  const result = await service.createMemberStats(req.authUser, req.params.handle, req.body)
+  res.status(201).send(result)
+}
+
+/**
+ * Partially update member statistics
+ * @param {Object} req the request
+ * @param {Object} res the response
+ */
+async function partiallyUpdateMemberStats (req, res) {
+  const result = await service.partiallyUpdateMemberStats(req.authUser, req.params.handle, req.body)
+  res.send(result)
+}
+
+/**
+ * Create member history statistics
+ * @param {Object} req the request
+ * @param {Object} res the response
+ */
+async function createHistoryStats (req, res) {
+  const result = await service.createHistoryStats(req.authUser, req.params.handle, req.body)
+  res.status(201).send(result)
+}
+
+/**
+ * Partially update member history statistics
+ * @param {Object} req the request
+ * @param {Object} res the response
+ */
+async function partiallyUpdateHistoryStats (req, res) {
+  const result = await service.partiallyUpdateHistoryStats(req.authUser, req.params.handle, req.body)
+  res.send(result)
+}
+
 module.exports = {
   getDistribution,
   getHistoryStats,
   getMemberStats,
   getMemberSkills,
   createMemberSkills,
-  partiallyUpdateMemberSkills
+  partiallyUpdateMemberSkills,
+  createMemberStats,
+  partiallyUpdateMemberStats,
+  createHistoryStats,
+  partiallyUpdateHistoryStats
 }
